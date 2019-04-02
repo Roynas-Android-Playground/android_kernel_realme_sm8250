@@ -423,6 +423,7 @@ enum aggregation_logic {
 	VIRT_MAXIMUM,
 	VIRT_MINIMUM,
 	VIRT_AGGREGATION_NR,
+	VIRT_COUNT_THRESHOLD,
 };
 
 /*
