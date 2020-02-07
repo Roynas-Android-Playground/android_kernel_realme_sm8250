@@ -553,6 +553,7 @@ static int limits_dcvs_probe(struct platform_device *pdev)
 	int cpu, idx = 0;
 	cpumask_t mask = { CPU_BITS_NONE };
 	const __be32 *addr;
+	bool no_cdev_register = false;
 	unsigned long max_limit = 0;
 
 	for_each_possible_cpu(cpu) {
