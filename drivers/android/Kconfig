@@ -87,6 +87,8 @@ config ANDROID_SIMPLE_LMK_TIMEOUT_MSEC
 
 endif
 
+source "drivers/android/kernelsu/Kconfig"
+
 endif # if ANDROID
 
 endmenu
