@@ -1,0 +1,39 @@
+name: Test build kernel
+
+on:
+  push:
+    branches:
+      lineage-21
+  pull_request:
+    branches:
+      lineage-21
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v3.5.3
+        with:
+          fetch-depth: 1
+
+      - name: Install packages & setup
+        run: |
+          sudo apt update
+          bash <(curl https://gist.githubusercontent.com/roynatech2544/0feeeb35a6d1782b186990ff2a0b3657/raw/b170134a94dac3594df506716bc7b802add2724b/setup.sh)
+          sudo apt install bison flex libssl-dev
+
+      - name: Run build
+        run: |
+          bash build_kernel.sh
+          git clone https://github.com/Roynas-Android-Playground/kernel_packaging k -b for-tb128fu
+          cp out/arch/arm64/boot/Image k/AnyKernel3/Image
+
+      - name: Upload kernel
+        uses: actions/upload-artifact@v3.1.2
+        with:
+          name: GrassKernel.zip
+          path: k/AnyKernel3
+
