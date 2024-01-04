@@ -1065,10 +1065,10 @@ static struct proc_dir_entry *sched_thresh = NULL;
 #ifdef CONFIG_KMALLOC_DEBUG
 /* operations of vmalloc_debug and kmalloc_debug */
 
-extern int __weak create_kmalloc_debug(struct proc_dir_entry *parent);
+extern int __weak __init create_kmalloc_debug(struct proc_dir_entry *parent);
 #endif
 #ifdef CONFIG_VMALLOC_DEBUG
-extern int __weak create_vmalloc_debug(struct proc_dir_entry *parent);
+extern int __weak __init create_vmalloc_debug(struct proc_dir_entry *parent);
 #endif
 #ifdef CONFIG_VIRTUAL_RESERVE_MEMORY
 int create_reserved_area_enable_proc(struct proc_dir_entry *parent);
