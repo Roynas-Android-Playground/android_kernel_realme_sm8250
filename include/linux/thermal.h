@@ -245,6 +245,16 @@ struct thermal_zone_device {
 	enum thermal_notify_event notify_event;
 };
 
+#ifdef CONFIG_THERMAL_SWITCH
+struct thermal_message_device {
+	struct device device;
+	int sconfig;
+	int temp_state;
+};
+int thermal_message_device_register(void);
+void thermal_message_device_unregister(void);
+#endif //CONFIG_THERMAL_SWITCH
+
 /**
  * struct thermal_governor - structure that holds thermal governor information
  * @name:	name of the governor
@@ -413,6 +423,7 @@ enum aggregation_logic {
 	VIRT_MAXIMUM,
 	VIRT_MINIMUM,
 	VIRT_AGGREGATION_NR,
+	VIRT_COUNT_THRESHOLD,
 };
 
 /*

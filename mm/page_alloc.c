@@ -341,20 +341,7 @@ compound_page_dtor * const compound_page_dtors[] = {
  */
 int min_free_kbytes = 1024;
 int user_min_free_kbytes = -1;
-#ifdef CONFIG_DISCONTIGMEM
-/*
- * DiscontigMem defines memory ranges as separate pg_data_t even if the ranges
- * are not on separate NUMA nodes. Functionally this works but with
- * watermark_boost_factor, it can reclaim prematurely as the ranges can be
- * quite small. By default, do not boost watermarks on discontigmem as in
- * many cases very high-order allocations like THP are likely to be
- * unsupported and the premature reclaim offsets the advantage of long-term
- * fragmentation avoidance.
- */
 int watermark_boost_factor __read_mostly;
-#else
-int watermark_boost_factor __read_mostly = 15000;
-#endif
 int watermark_scale_factor = 10;
 
 /*
@@ -2883,15 +2870,16 @@ static inline struct page *__rmqueue_cma(struct zone *zone, unsigned int order)
 #endif
 
 /*
- * Obtain a specified number of elements from the buddy allocator, all under
- * a single hold of the lock, for efficiency.  Add them to the supplied list.
- * Returns the number of new pages which were placed at *list.
+ * Obtain a specified number of elements from the buddy allocator, and relax the
+ * zone lock when needed. Add them to the supplied list. Returns the number of
+ * new pages which were placed at *list.
  */
 static int rmqueue_bulk(struct zone *zone, unsigned int order,
 			unsigned long count, struct list_head *list,
 			int migratetype, unsigned int alloc_flags)
 {
-	int i, alloced = 0;
+	const bool can_resched = !preempt_count() && !irqs_disabled();
+	int i, alloced = 0, last_mod = 0;
 
 	spin_lock(&zone->lock);
 	for (i = 0; i < count; ++i) {
@@ -2909,6 +2897,18 @@ static int rmqueue_bulk(struct zone *zone, unsigned int order,
 
 		if (unlikely(page == NULL))
 			break;
+
+		/* Reschedule and ease the contention on the lock if needed */
+		if (i + 1 < count && ((can_resched && need_resched()) ||
+				      spin_needbreak(&zone->lock))) {
+			__mod_zone_page_state(zone, NR_FREE_PAGES,
+					      -((i + 1 - last_mod) << order));
+			last_mod = i + 1;
+			spin_unlock(&zone->lock);
+			if (can_resched)
+				cond_resched();
+			spin_lock(&zone->lock);
+		}
 
 		if (unlikely(check_pcp_refill(page)))
 			continue;
@@ -2942,7 +2942,7 @@ static int rmqueue_bulk(struct zone *zone, unsigned int order,
 	 * on i. Do not confuse with 'alloced' which is the number of
 	 * pages added to the pcp list.
 	 */
-	__mod_zone_page_state(zone, NR_FREE_PAGES, -(i << order));
+	__mod_zone_page_state(zone, NR_FREE_PAGES, -((i - last_mod) << order));
 	spin_unlock(&zone->lock);
 	return alloced;
 }
@@ -4807,6 +4807,7 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
 	unsigned int cpuset_mems_cookie;
 	unsigned int zonelist_iter_cookie;
 	int reserve_flags;
+	pg_data_t *pgdat = ac->preferred_zoneref->zone->zone_pgdat;
 	bool woke_kswapd = false;
 	bool used_vmpressure = false;
 
@@ -4854,13 +4855,11 @@ restart:
 	if (!ac->preferred_zoneref->zone)
 		goto nopage;
 
-        if (alloc_flags & ALLOC_KSWAPD) {
+	if (gfp_mask & __GFP_KSWAPD_RECLAIM) {
 		if (!woke_kswapd) {
-			atomic_long_inc(&kswapd_waiters);
+			atomic_inc(&pgdat->kswapd_waiters);
 			woke_kswapd = true;
 		}
-		if (!used_vmpressure)
-			used_vmpressure = vmpressure_inc_users(order);
 		wake_all_kswapds(order, gfp_mask, ac);
 	}
 	/*
@@ -5077,9 +5076,7 @@ nopage:
 fail:
 got_pg:
 	if (woke_kswapd)
-		atomic_long_dec(&kswapd_waiters);
-	if (used_vmpressure)
-		vmpressure_dec_users();
+		atomic_dec(&pgdat->kswapd_waiters);
 	if (!page)
 		warn_alloc(gfp_mask, ac->nodemask,
 				"page allocation failure: order:%u", order);
@@ -7116,6 +7113,7 @@ static void __meminit pgdat_init_internals(struct pglist_data *pgdat)
 	pgdat_page_ext_init(pgdat);
 	spin_lock_init(&pgdat->lru_lock);
 	lruvec_init(node_lruvec(pgdat));
+	pgdat->kswapd_waiters = (atomic_t)ATOMIC_INIT(0);
 }
 
 static void __meminit zone_init_internals(struct zone *zone, enum zone_type idx, int nid,
